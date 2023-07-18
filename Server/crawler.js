@@ -43,7 +43,9 @@ var con = createConnection({
 
     const page = await browser.newPage();
     await page.goto(link);
-    const title = await page.title();
+    var title = await page.title();
+    var images; 
+
 
     var description, keywords, hrefs;
     // puppeter get description of the page if there is one
@@ -65,12 +67,45 @@ var con = createConnection({
   }catch{
      hrefs = []
   }
+
+  // get a list of the src and alt values of all images in the page
+  try{
+      images = await page.$$eval('img', imgs => imgs.map(img => [img.src, img.alt]));
+  }catch{
+      images = []
+  }
+
+  
     page.close();
 
 // Same query as above but is an update
-    const query = "UPDATE Links SET Title = '"+title+"', Description = '"+description+"', Tags = '"+keywords+"', Indexed = TRUE WHERE Url = '"+link+"'";
+
+//sanitizing title, description and keywords
+title = title.replace(/'/g, "\\'");
+description = description.replace(/'/g, "\\'");
+keywords = keywords.replace(/'/g, "\\'");
+
+    var query = "UPDATE Links SET Title = '"+title+"', Description = '"+description+"', Tags = '"+keywords+"', Indexed = TRUE WHERE Url = '"+link+"'";
 
     const success = await queryToBd(query);
+
+
+    // for each image in the page, add it to the database
+    images.forEach(async image => {
+        // santize image
+        image[0] = image[0].replace(/'/g, "\\'");
+        image[1] = image[1].replace(/'/g, "\\'");
+        const query = "INSERT INTO Images(url, alt) VALUES ('"+image[0]+"','"+image[1]+"')";
+        const success = await queryToBd(query);
+    });
+
+    // delete duplicates from Images table, by url
+
+    query = "DELETE FROM Images WHERE Id NOT IN (SELECT MIN(Id) FROM Images GROUP BY url);";
+    var result = await queryToBd(query);
+
+
+
 
     
     if(success){

@@ -12,11 +12,13 @@ var con = createConnection({
 
 async function search (searchQuery) {
 
+  console.log("searching for: "+searchQuery);
     //split the search query into words
     var words = searchQuery.split(" ");
     var query, dbResults;
 
     var resultsArray= [];
+    var imagesArray = [];
    
     //the selected block, but using a for loop instead of forEach
 
@@ -53,7 +55,40 @@ async function search (searchQuery) {
     
           resultsArray.push(element.Url);
          });
+
+         query = "SELECT Url FROM Images WHERE url LIKE '%"+words[i]+"%' LIMIT 5";
+         dbResults = await queryToBd(query);
+
+       dbResults.forEach(element => {
+    
+          imagesArray.push(element.Url);
+        
+         });
+
+         query = "SELECT url FROM Images WHERE alt LIKE '%"+words[i]+"%' LIMIT 5";
+         dbResults = await queryToBd(query);
+
+       dbResults.forEach(element => {
+    
+          imagesArray.push(element.Url);
+      
+         });
+
      }
+
+     // delete undefined elements
+      imagesArray = imagesArray.filter(function (el) {
+        return el != null;
+      });
+
+     imagesArray = sortByAppear(imagesArray);
+
+     imagesArray = removeDuplicates(imagesArray);
+
+      imagesArray = await searchTermsImages(imagesArray, words);
+
+      imagesArray = await finalSelectionImages(imagesArray);
+
 
      // sort the array by the number of times the url appears
      resultsArray = sortByAppear(resultsArray);
@@ -67,6 +102,10 @@ async function search (searchQuery) {
       // final sort by apearence and return the top 5 results 
 
       resultsArray = await finalSelection(resultsArray);
+
+      resultsArray = [...resultsArray, imagesArray];
+
+      resultsArray = resultsArray.flat();
 
     return resultsArray;
 
@@ -107,6 +146,62 @@ async function finalSelection(array) {
 
   }
 
+  // add an Id to each element in newArray
+
+  for (var i = 0; i < newArray.length; i++) {
+    newArray[i].Id = i;
+    newArray[i].type = "link";
+    delete newArray[i].count;
+  }
+
+ 
+
+
+  return newArray;
+
+}
+
+async function finalSelectionImages(array) {
+
+  var newArray = [];
+
+  array.sort(function(a, b) {
+    return b.count - a.count;
+  });
+
+  for (var i = 0; i < 5; i++) {
+
+    if (array[i] != null) {
+      newArray.push(array[i]);
+    }
+  }
+
+  // get the title and description for elements in newArray
+
+  var query, dbResults;
+
+  for (var i = 0; i < newArray.length; i++) {
+
+    query = "SELECT alt FROM Images WHERE Url = '"+newArray[i].url+"'";
+
+    dbResults = await queryToBd(query);
+
+    if (dbResults[0].alt != null) {
+    newArray[i].alt = dbResults[0].alt;
+    }
+    
+
+
+  }
+
+  // add an Id to each element in newArray
+
+  for (var i = 0; i < newArray.length; i++) {
+    newArray[i].  Id = i;
+    newArray[i].type = "image";
+    delete newArray[i].count;
+  }
+
 
   return newArray;
 
@@ -122,6 +217,45 @@ async function searchTerms(array, words) {
 
 
     query = "SELECT Title, Description, Tags FROM Links WHERE Url = '"+array[i].url+"'";
+
+    dbResults = await queryToBd(query);
+
+    // search how many times every word appears in the url, title, description, and tags
+
+    for (var j = 0; j < words.length; j++) {
+
+      if (dbResults[0].Title != null) {
+        count += dbResults[0].Title.split(words[j]).length - 1;
+      }
+
+      if (dbResults[0].Description != null) {
+        count += dbResults[0].Description.split(words[j]).length - 1;
+      }
+
+      if (dbResults[0].Tags != null) {
+        count += dbResults[0].Tags.split(words[j]).length - 1;
+      }
+
+    }
+
+    array[i].count = count;
+
+  }
+
+  return array;
+
+}
+
+async function searchTermsImages(array, words) {
+
+  var query, dbResults;
+
+  for (var i = 0; i < array.length; i++) {
+
+    var count = array[i].count;
+
+
+    query = "SELECT url, alt FROM Images WHERE url = '"+array[i].url+"'";
 
     dbResults = await queryToBd(query);
 
